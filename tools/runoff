@@ -1,5 +1,11 @@
 #!/bin/sh
 
+# TODO: Fix runoff.list
+
+# This $DIR hack is so we don't need to rewrite anything.
+DIR=$(dirname $(readlink -f $0))
+cd $DIR/..
+
 echo This script takes a minute to run.  Be patient. 1>&2
 
 LC_CTYPE=C export LC_CTYPE
@@ -14,11 +20,11 @@ pad()
 mkdir -p fmt
 rm -f fmt/*
 cp README fmt
-files=`grep -v '^#' runoff.list | awk '{print $1}'`
+files=`grep -v '^#' tools/runoff.list | awk '{print $1}'`
 n=99
 for i in $files
 do
-	./runoff1 -n $n $i >fmt/$i
+	./tools/runoff1 -n $n $i >fmt/$i
 	nn=`tail -1 fmt/$i | sed 's/ .*//; s/^0*//'`
 	if [ "x$nn" != x ]; then
 		n=$nn
@@ -26,8 +32,8 @@ do
 done
 
 # create table of contents
-cat toc.hdr >fmt/toc
-pr -e8 -t runoff.list | awk '
+cat tools/toc.hdr >fmt/toc
+pr -e8 -t tools/runoff.list | awk '
 /^[a-z0-9]/ {
 	s=$0
 	f="fmt/"$1
@@ -41,7 +47,7 @@ pr -e8 -t runoff.list | awk '
 {
 	print
 }' | pr -3 -t >>fmt/toc
-cat toc.ftr >>fmt/toc
+cat tools/toc.ftr >>fmt/toc
 
 # check for bad alignments
 perl -e '
@@ -109,7 +115,7 @@ perl -e '
 		
 		print STDERR "Unknown spec: $_\n";
 	}
-' fmt/tocdata runoff.spec
+' fmt/tocdata tools/runoff.spec
 
 # make definition list
 cd fmt
@@ -209,15 +215,15 @@ awk '
 
 # format the whole thing
 (
-	../pr.pl README
-	../pr.pl -h "table of contents" toc
+	../tools/pr.pl README
+	../tools//pr.pl -h "table of contents" toc
 	# pr -t -2 t.defs | ../pr.pl -h "definitions" | pad
 	pr -t -l50 -2 refs | ../pr.pl -h "cross-references" | pad
 	# pr.pl -h "definitions" -2 t.defs | pad
 	# pr.pl -h "cross-references" -2 refs | pad 
 	for i in $files
 	do
-		../pr.pl -h "xv6/$i" $i
+		../tools/pr.pl -h "xv6/$i" $i
 	done
 ) | mpage -m50t50b -o -bLetter -T -t -2 -FCourier -L60 >all.ps
 grep Pages: all.ps

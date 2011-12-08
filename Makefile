@@ -189,16 +189,6 @@ clean:
 	@find ./src -name '*.exe' -delete
 	@find ./src -name '*.d'   -delete
 
-# make a printout
-FILES = $(shell grep -v '^\#' runoff.list)
-PRINT = runoff.list runoff.spec README toc.hdr toc.ftr $(FILES)
-
-xv6.pdf: $(PRINT)
-	./runoff
-	ls -l xv6.pdf
-
-print: xv6.pdf
-
 # run in emulators
 
 bochs : fs.img xv6.img
@@ -236,4 +226,4 @@ qemu-nox-gdb: fs.img xv6.img .gdbinit
 	@echo "*** Now run 'gdb'." 1>&2
 	$(QEMU) -nographic $(QEMUOPTS) -S $(QEMUGDB)
 
-.PHONY: dist-test dist
+.PHONY: qemu qemu-memfs qemu-nox qemu-gdb qemu-nox-gdb clean
