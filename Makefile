@@ -1,32 +1,32 @@
 OBJS = \
-	bio.o\
-	console.o\
-	exec.o\
-	file.o\
-	fs.o\
-	ide.o\
-	ioapic.o\
-	kalloc.o\
-	kbd.o\
-	lapic.o\
-	log.o\
-	main.o\
-	mp.o\
-	picirq.o\
-	pipe.o\
-	proc.o\
-	spinlock.o\
-	string.o\
-	swtch.o\
-	syscall.o\
-	sysfile.o\
-	sysproc.o\
-	timer.o\
-	trapasm.o\
-	trap.o\
-	uart.o\
-	vectors.o\
-	vm.o\
+	src/krnl/bio.o\
+	src/krnl/console.o\
+	src/krnl/exec.o\
+	src/krnl/file.o\
+	src/krnl/fs.o\
+	src/krnl/ide.o\
+	src/krnl/ioapic.o\
+	src/krnl/kalloc.o\
+	src/krnl/kbd.o\
+	src/krnl/lapic.o\
+	src/krnl/log.o\
+	src/krnl/main.o\
+	src/krnl/mp.o\
+	src/krnl/picirq.o\
+	src/krnl/pipe.o\
+	src/krnl/proc.o\
+	src/krnl/spinlock.o\
+	src/krnl/string.o\
+	src/krnl/swtch.o\
+	src/krnl/syscall.o\
+	src/krnl/sysfile.o\
+	src/krnl/sysproc.o\
+	src/krnl/timer.o\
+	src/krnl/trapasm.o\
+	src/krnl/trap.o\
+	src/krnl/uart.o\
+	src/krnl/vectors.o\
+	src/krnl/vm.o\
 
 # Cross-compiling (e.g., on Mac OS X)
 #TOOLPREFIX = i386-jos-elf-
@@ -68,16 +68,18 @@ QEMU = $(shell if which qemu > /dev/null; \
 endif
 
 CC = $(TOOLPREFIX)gcc
-AS = $(TOOLPREFIX)gas
+AS = $(TOOLPREFIX)gcc
 LD = $(TOOLPREFIX)ld
 OBJCOPY = $(TOOLPREFIX)objcopy
 OBJDUMP = $(TOOLPREFIX)objdump
 #CFLAGS = -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer
-CFLAGS = -fno-pic -static -fno-builtin -fno-strict-aliasing -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer
+CFLAGS = -fno-pic -static -fno-builtin -fno-strict-aliasing -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer -Iinclude
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
-ASFLAGS = -m32 -gdwarf-2 -Wa,-divide
+ASFLAGS = -m32 -gdwarf-2 -x assembler-with-cpp -Iinclude
 # FreeBSD ld wants ``elf_i386_fbsd''
-LDFLAGS += -m $(shell $(LD) -V | grep elf_i386 2>/dev/null)
+LDFLAGS = -m $(shell $(LD) -V | grep elf_i386 2>/dev/null)
+
+all: xv6.img
 
 xv6.img: bootblock kernel fs.img
 	dd if=/dev/zero of=xv6.img count=10000
@@ -89,28 +91,34 @@ xv6memfs.img: bootblock kernelmemfs
 	dd if=bootblock of=xv6memfs.img conv=notrunc
 	dd if=kernelmemfs of=xv6memfs.img seek=1 conv=notrunc
 
-bootblock: bootasm.S bootmain.c
-	$(CC) $(CFLAGS) -fno-pic -O -nostdinc -I. -c bootmain.c
-	$(CC) $(CFLAGS) -fno-pic -nostdinc -I. -c bootasm.S
-	$(LD) $(LDFLAGS) -N -e start -Ttext 0x7C00 -o bootblock.o bootasm.o bootmain.o
-	$(OBJDUMP) -S bootblock.o > bootblock.asm
-	$(OBJCOPY) -S -O binary -j .text bootblock.o bootblock
-	./sign.pl bootblock
+bootblock: src/boot/bootasm.S src/boot/bootmain.c
+	$(CC) $(CFLAGS) -fno-pic -O -nostdinc -c src/boot/bootmain.c -o src/boot/bootmain.o
+	$(AS) $(ASFLAGS) -fno-pic -nostdinc -c src/boot/bootasm.S -o src/boot/bootasm.o
+	$(LD) $(LDFLAGS) -N -e start -Ttext 0x7C00 -o src/boot/bootblock.o src/boot/bootasm.o src/boot/bootmain.o
+	$(OBJDUMP) -S src/boot/bootblock.o > src/boot/bootblock.asm
+	$(OBJCOPY) -S -O binary -j .text src/boot/bootblock.o src/boot/bootblock
+	./sign.pl src/boot/bootblock
 
-entryother: entryother.S
-	$(CC) $(CFLAGS) -fno-pic -nostdinc -I. -c entryother.S
-	$(LD) $(LDFLAGS) -N -e start -Ttext 0x7000 -o bootblockother.o entryother.o
-	$(OBJCOPY) -S -O binary -j .text bootblockother.o entryother
-	$(OBJDUMP) -S bootblockother.o > entryother.asm
+%.o: %.S
+	$(AS) $(ASFLAGS) -c $^ -o $@
 
-initcode: initcode.S
-	$(CC) $(CFLAGS) -nostdinc -I. -c initcode.S
-	$(LD) $(LDFLAGS) -N -e start -Ttext 0 -o initcode.out initcode.o
-	$(OBJCOPY) -S -O binary initcode.out initcode
-	$(OBJDUMP) -S initcode.o > initcode.asm
+%.o: %.c
+	$(CC) $(CFLAGS) -c $^ -o $@
 
-kernel: $(OBJS) entry.o entryother initcode kernel.ld
-	$(LD) $(LDFLAGS) -T kernel.ld -o kernel entry.o $(OBJS) -b binary initcode entryother
+src/boot/entryother: src/boot/entryother.S
+	$(CC) $(CFLAGS) -fno-pic -nostdinc -c src/boot/entryother.S -o src/boot/entryother.o
+	$(LD) $(LDFLAGS) -N -e start -Ttext 0x7000 -o src/boot/bootblockother.o src/boot/entryother.o
+	$(OBJCOPY) -S -O binary -j .text src/boot/bootblockother.o src/boot/entryother
+	$(OBJDUMP) -S src/boot/bootblockother.o > src/boot/entryother.asm
+
+src/krnl/initcode: src/krnl/initcode.S
+	$(CC) $(CFLAGS) -nostdinc -c src/krnl/initcode.S -o src/krnl/initcode.o
+	$(LD) $(LDFLAGS) -N -e start -Ttext 0 -o src/krnl/initcode.out src/krnl/initcode.o
+	$(OBJCOPY) -S -O binary src/krnl/initcode.out src/krnl/initcode
+	$(OBJDUMP) -S src/krnl/initcode.o > src/krnl/initcode.asm
+
+kernel: $(OBJS) src/boot/entry.o src/boot/entryother src/krnl/initcode kernel.ld
+	$(LD) $(LDFLAGS) -T kernel.ld -o kernel src/boot/entry.o $(OBJS) -b binary src/krnl/initcode src/boot/entryother
 	$(OBJDUMP) -S kernel > kernel.asm
 	$(OBJDUMP) -t kernel | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > kernel.sym
 
@@ -126,15 +134,15 @@ kernelmemfs: $(MEMFSOBJS) entry.o entryother initcode fs.img
 	$(OBJDUMP) -S kernelmemfs > kernelmemfs.asm
 	$(OBJDUMP) -t kernelmemfs | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > kernelmemfs.sym
 
-tags: $(OBJS) entryother.S _init
+tags: $(OBJS) src/boot/entryother.S _init
 	etags *.S *.c
 
-vectors.S: vectors.pl
-	perl vectors.pl > vectors.S
+#vectors.S: vectors.pl
+#	perl vectors.pl > vectors.S
 
-ULIB = ulib.o usys.o printf.o umalloc.o
+ULIB = src/lib/user/ulib.o src/lib/user/usys.o src/lib/user/printf.o src/lib/user/umalloc.o
 
-_%: %.o $(ULIB)
+_%: src/user/%.o $(ULIB)
 	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $@ $^
 	$(OBJDUMP) -S $@ > $*.asm
 	$(OBJDUMP) -t $@ | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $*.sym
@@ -176,6 +184,10 @@ clean:
 	initcode initcode.out kernel xv6.img fs.img kernelmemfs mkfs \
 	.gdbinit \
 	$(UPROGS)
+	@find ./src -name '*.o'   -delete
+	@find ./src -name '*.lib' -delete
+	@find ./src -name '*.exe' -delete
+	@find ./src -name '*.d'   -delete
 
 # make a printout
 FILES = $(shell grep -v '^\#' runoff.list)
@@ -223,47 +235,5 @@ qemu-gdb: fs.img xv6.img .gdbinit
 qemu-nox-gdb: fs.img xv6.img .gdbinit
 	@echo "*** Now run 'gdb'." 1>&2
 	$(QEMU) -nographic $(QEMUOPTS) -S $(QEMUGDB)
-
-# CUT HERE
-# prepare dist for students
-# after running make dist, probably want to
-# rename it to rev0 or rev1 or so on and then
-# check in that version.
-
-EXTRA=\
-	mkfs.c ulib.c user.h cat.c echo.c forktest.c grep.c kill.c\
-	ln.c ls.c mkdir.c rm.c stressfs.c usertests.c wc.c zombie.c\
-	printf.c umalloc.c\
-	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list\
-	.gdbinit.tmpl gdbutil\
-
-dist:
-	rm -rf dist
-	mkdir dist
-	for i in $(FILES); \
-	do \
-		grep -v PAGEBREAK $$i >dist/$$i; \
-	done
-	sed '/CUT HERE/,$$d' Makefile >dist/Makefile
-	echo >dist/runoff.spec
-	cp $(EXTRA) dist
-
-dist-test:
-	rm -rf dist
-	make dist
-	rm -rf dist-test
-	mkdir dist-test
-	cp dist/* dist-test
-	cd dist-test; $(MAKE) print
-	cd dist-test; $(MAKE) bochs || true
-	cd dist-test; $(MAKE) qemu
-
-# update this rule (change rev#) when it is time to
-# make a new revision.
-tar:
-	rm -rf /tmp/xv6
-	mkdir -p /tmp/xv6
-	cp dist/* dist/.gdbinit.tmpl /tmp/xv6
-	(cd /tmp; tar cf - xv6) | gzip >xv6-rev5.tar.gz
 
 .PHONY: dist-test dist
